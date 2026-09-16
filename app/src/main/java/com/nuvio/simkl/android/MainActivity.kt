@@ -1,113 +1,174 @@
 package com.nuvio.simkl.android
 
-import android.Manifest
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
-import android.widget.*
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var store: ConfigStore
-    private lateinit var port: EditText
-    private lateinit var simkl: EditText
-    private lateinit var tmdb: EditText
-    private lateinit var tvdb: EditText
-    private lateinit var discordApp: EditText
-    private lateinit var username: EditText
-    private lateinit var avatar: EditText
-    private lateinit var discordEnabled: CheckBox
-    private lateinit var status: TextView
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        store = ConfigStore(this)
-        requestNotificationPermission()
-        buildUi()
-    }
+    private lateinit var profileStore: ProfileStore
 
-    private fun field(label: String, value: String): EditText {
-        val box = EditText(this)
-        box.hint = label
-        box.setText(value)
-        box.setPadding(24, 16, 24, 16)
-        return box
-    }
+    private lateinit var presenceController:
+            PresenceController
 
-    private fun buildUi() {
-        val c = store.load()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(28, 28, 28, 28)
-        }
-        val title = TextView(this).apply {
-            text = "Nuvio Simkl"
-            textSize = 28f
-            setPadding(0, 0, 0, 12)
-        }
-        root.addView(title)
-        root.addView(TextView(this).apply {
-            text = "Local Android service • no Termux required"
-            textSize = 15f
-        })
+    private lateinit var connectionManager:
+            ConnectionManager
 
-        port = field("Local port", c.port.toString()); root.addView(port)
-        simkl = field("Simkl Client ID", c.simklClientId); root.addView(simkl)
-        tmdb = field("TMDB API key", c.tmdbApiKey); root.addView(tmdb)
-        tvdb = field("TVDB API key", c.tvdbApiKey); root.addView(tvdb)
-        discordApp = field("Discord Application ID", if (c.discordApplicationId == 0L) "" else c.discordApplicationId.toString()); root.addView(discordApp)
-        username = field("Nuvio username", c.profileUsername); root.addView(username)
-        avatar = field("Nuvio avatar URL", c.profileAvatarUrl); root.addView(avatar)
+    private lateinit var statusText:
+            TextView
 
-        discordEnabled = CheckBox(this).apply {
-            text = "Enable Discord Rich Presence"
-            isChecked = c.discordEnabled
-        }
-        root.addView(discordEnabled)
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
 
-        val save = Button(this).apply { text = "Save & Start" }
-        save.setOnClickListener {
-            val cfg = AppConfig(
-                port = port.text.toString().toIntOrNull() ?: 7000,
-                simklClientId = simkl.text.toString().trim(),
-                tmdbApiKey = tmdb.text.toString().trim(),
-                tvdbApiKey = tvdb.text.toString().trim(),
-                discordApplicationId = discordApp.text.toString().trim().toLongOrNull() ?: 0L,
-                discordEnabled = discordEnabled.isChecked,
-                profileUsername = username.text.toString().trim(),
-                profileAvatarUrl = avatar.text.toString().trim()
+        super.onCreate(
+            savedInstanceState
+        )
+
+        profileStore =
+            ProfileStore(this)
+
+        val discordBridge =
+            DiscordBridge()
+
+        presenceController =
+            PresenceController(
+                profilesProvider = {
+                    profileStore.loadProfiles()
+                },
+                discordBridge =
+                    discordBridge
             )
-            store.save(cfg)
-            stopService(Intent(this, NuvioService::class.java))
-            ContextCompat.startForegroundService(this, Intent(this, NuvioService::class.java))
-            status.text = "Running at http://127.0.0.1:${cfg.port}"
-        }
-        root.addView(save)
 
-        val stop = Button(this).apply { text = "Stop Service" }
-        stop.setOnClickListener {
-            stopService(Intent(this, NuvioService::class.java))
-            status.text = "Stopped"
-        }
-        root.addView(stop)
+        connectionManager =
+            ConnectionManager {
 
-        status = TextView(this).apply {
-            text = "Not started"
-            textSize = 16f
-            setPadding(0, 24, 0, 0)
-        }
-        root.addView(status)
+                event ->
 
-        setContentView(ScrollView(this).apply { addView(root) })
+                runOnUiThread {
+
+                    presenceController
+                        .handleEvent(event)
+
+                    updateStatus(event)
+                }
+            }
+
+        createUi()
+
+        connectionManager.start()
     }
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 42)
+    private fun createUi() {
+
+        val root =
+            LinearLayout(this)
+
+        root.orientation =
+            LinearLayout.VERTICAL
+
+        root.setPadding(
+            40,
+            40,
+            40,
+            40
+        )
+
+        val title =
+            TextView(this)
+
+        title.text =
+            "Nuvio Discord RPC"
+
+        title.textSize =
+            24f
+
+        root.addView(
+            title
+        )
+
+        statusText =
+            TextView(this)
+
+        statusText.text =
+            "Connecting..."
+
+        statusText.textSize =
+            16f
+
+        root.addView(
+            statusText
+        )
+
+        val profileCount =
+            TextView(this)
+
+        val profiles =
+            profileStore.loadProfiles()
+
+        profileCount.text =
+            "RPC profiles: ${profiles.count { it.rpcEnabled }} / ${profiles.size}"
+
+        root.addView(
+            profileCount
+        )
+
+        val reconnectButton =
+            Button(this)
+
+        reconnectButton.text =
+            "Reconnect"
+
+        reconnectButton.setOnClickListener {
+
+            connectionManager.stop()
+
+            connectionManager.start()
+
+            statusText.text =
+                "Reconnecting..."
         }
+
+        root.addView(
+            reconnectButton
+        )
+
+        setContentView(
+            root
+        )
+    }
+
+    private fun updateStatus(
+        event: NuvioEvent
+    ) {
+
+        statusText.text =
+            when (event) {
+
+                is NuvioEvent.ProfileChanged ->
+                    "Profile: ${event.profileId}"
+
+                is NuvioEvent.PlaybackStarted ->
+                    "Watching: ${event.title}"
+
+                is NuvioEvent.PlaybackStopped ->
+                    "Browsing Nuvio"
+
+                is NuvioEvent.ActivityChanged ->
+                    if (event.active) {
+                        "Nuvio active"
+                    } else {
+                        "Home — waiting 60 seconds"
+                    }
+            }
+    }
+
+    override fun onDestroy() {
+
+        connectionManager.stop()
+
+        super.onDestroy()
     }
 }
