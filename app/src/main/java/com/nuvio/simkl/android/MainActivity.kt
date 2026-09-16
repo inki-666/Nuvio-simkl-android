@@ -1,7 +1,6 @@
 package com.nuvio.simkl.android
 
 import android.os.Bundle
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -34,26 +33,8 @@ class MainActivity : AppCompatActivity() {
             textSize = 16f
         }
 
-        val startButton = Button(this).apply {
-            text = "Start Nuvio Service"
-            setOnClickListener {
-                NuvioService.start(this@MainActivity)
-                status.text = "Nuvio service started"
-            }
-        }
-
-        val stopButton = Button(this).apply {
-            text = "Stop Nuvio Service"
-            setOnClickListener {
-                NuvioService.stop(this@MainActivity)
-                status.text = "Nuvio service stopped"
-            }
-        }
-
         root.addView(title)
         root.addView(status)
-        root.addView(startButton)
-        root.addView(stopButton)
 
         setContentView(root)
     }
