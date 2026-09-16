@@ -4,180 +4,100 @@ import android.os.Handler
 import android.os.Looper
 
 class PresenceController(
-    private val profilesProvider: () -> List<NuvioProfile>,
+    private val config: ConfigStore,
     private val discordBridge: DiscordBridge
 ) {
 
-    private val mainHandler =
-        Handler(Looper.getMainLooper())
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    private var currentProfileId: String? = null
-
-    private var nuvioActive = false
-
-    private var playing = false
-
-    private var currentTitle: String? = null
-
+    private var currentEvent: PresenceEvent? = null
     private var awayRunnable: Runnable? = null
 
-    fun handleEvent(
-        event: NuvioEvent
-    ) {
+    fun handle(event: PresenceEvent): Boolean {
+        cancelAwayTimer()
 
-        when (event) {
+        currentEvent = event
 
-            is NuvioEvent.ProfileChanged -> {
-
-                handleProfileChanged(
-                    event.profileId
-                )
+        when (event.event.uppercase()) {
+            "HOME" -> {
+                startAwayTimer()
+                return true
             }
 
-            is NuvioEvent.PlaybackStarted -> {
-
-                handlePlaybackStarted(
-                    event.profileId,
-                    event.title
-                )
+            "PLAYING",
+            "WATCHING",
+            "PLAYBACK_STARTED" -> {
+                renderWatching(event)
+                return true
             }
 
-            is NuvioEvent.PlaybackStopped -> {
-
-                handlePlaybackStopped(
-                    event.profileId
-                )
+            "STOPPED",
+            "PLAYBACK_STOPPED",
+            "BROWSING" -> {
+                renderBrowsing(event)
+                return true
             }
 
-            is NuvioEvent.ActivityChanged -> {
+            "PROFILE_CHANGED" -> {
+                discordBridge.clear()
+                return true
+            }
 
-                handleActivityChanged(
-                    event.active
-                )
+            else -> {
+                renderBrowsing(event)
+                return true
             }
         }
     }
 
-    private fun handleProfileChanged(
-        profileId: String
-    ) {
-
-        /*
-         * Profile switch is NOT the same thing
-         * as pressing Home.
-         *
-         * Old profile is immediately stopped.
-         */
+    fun clear() {
         cancelAwayTimer()
-
-        currentProfileId =
-            profileId
-
-        playing = false
-
-        currentTitle = null
-
-        nuvioActive = true
-
-        render()
+        currentEvent = null
+        discordBridge.clear()
     }
 
-    private fun handlePlaybackStarted(
-        profileId: String,
-        title: String
-    ) {
+    fun current(): PresenceEvent? {
+        return currentEvent
+    }
 
-        if (
-            currentProfileId != null &&
-            currentProfileId != profileId
-        ) {
+    private fun renderWatching(event: PresenceEvent) {
+        val configValue = config.load()
+
+        if (!configValue.discordEnabled) {
+            discordBridge.clear()
             return
         }
 
-        currentProfileId =
-            profileId
+        val title = event.title
 
-        playing = true
-
-        currentTitle =
-            title
-
-        nuvioActive = true
-
-        cancelAwayTimer()
-
-        render()
-    }
-
-    private fun handlePlaybackStopped(
-        profileId: String
-    ) {
-
-        if (
-            currentProfileId != null &&
-            currentProfileId != profileId
-        ) {
+        if (title.isNullOrBlank()) {
+            discordBridge.setBrowsing()
             return
         }
 
-        playing = false
-
-        currentTitle = null
-
-        /*
-         * IMPORTANT:
-         *
-         * Stopping playback does NOT mean
-         * Nuvio was closed.
-         *
-         * We remain in browsing state.
-         */
-        nuvioActive = true
-
-        render()
+        discordBridge.setWatching(title)
     }
 
-    private fun handleActivityChanged(
-        active: Boolean
-    ) {
+    private fun renderBrowsing(event: PresenceEvent) {
+        val configValue = config.load()
 
-        if (active) {
-
-            cancelAwayTimer()
-
-            nuvioActive = true
-
-            render()
-
-        } else {
-
-            /*
-             * Home is separate from profile switching.
-             *
-             * Give the user 60 seconds to return.
-             */
-            startAwayTimer()
+        if (!configValue.discordEnabled) {
+            discordBridge.clear()
+            return
         }
+
+        discordBridge.setBrowsing()
     }
 
     private fun startAwayTimer() {
-
         cancelAwayTimer()
 
-        val runnable =
-            Runnable {
+        val runnable = Runnable {
+            currentEvent = null
+            discordBridge.clear()
+        }
 
-                nuvioActive = false
-
-                playing = false
-
-                currentTitle = null
-
-                discordBridge.clear()
-            }
-
-        awayRunnable =
-            runnable
+        awayRunnable = runnable
 
         mainHandler.postDelayed(
             runnable,
@@ -186,70 +106,10 @@ class PresenceController(
     }
 
     private fun cancelAwayTimer() {
-
         awayRunnable?.let {
-
-            mainHandler.removeCallbacks(
-                it
-            )
+            mainHandler.removeCallbacks(it)
         }
 
         awayRunnable = null
-    }
-
-    private fun render() {
-
-        val profile =
-            profilesProvider()
-                .firstOrNull {
-                    it.id == currentProfileId
-                }
-
-        if (profile == null) {
-
-            discordBridge.clear()
-
-            return
-        }
-
-        /*
-         * Profile-level RPC switch.
-         */
-        if (!profile.rpcEnabled) {
-
-            discordBridge.clear()
-
-            return
-        }
-
-        /*
-         * Nuvio is actually inactive.
-         */
-        if (!nuvioActive) {
-
-            discordBridge.clear()
-
-            return
-        }
-
-        /*
-         * Watching.
-         */
-        if (
-            playing &&
-            !currentTitle.isNullOrBlank()
-        ) {
-
-            discordBridge.setWatching(
-                currentTitle!!
-            )
-
-            return
-        }
-
-        /*
-         * Browsing.
-         */
-        discordBridge.setBrowsing()
     }
 }
