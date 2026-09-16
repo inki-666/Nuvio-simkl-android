@@ -8,166 +8,60 @@ import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var profileStore: ProfileStore
+    private lateinit var config: ConfigStore
+    private lateinit var discord: DiscordBridge
+    private lateinit var presence: PresenceController
 
-    private lateinit var presenceController:
-            PresenceController
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-    private lateinit var connectionManager:
-            ConnectionManager
+        config = ConfigStore(this)
+        discord = DiscordBridge(config)
+        presence = PresenceController(config, discord)
 
-    private lateinit var statusText:
-            TextView
-
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
-
-        super.onCreate(
-            savedInstanceState
-        )
-
-        profileStore =
-            ProfileStore(this)
-
-        val discordBridge =
-            DiscordBridge()
-
-        presenceController =
-            PresenceController(
-                profilesProvider = {
-                    profileStore.loadProfiles()
-                },
-                discordBridge =
-                    discordBridge
-            )
-
-        connectionManager =
-            ConnectionManager {
-
-                event ->
-
-                runOnUiThread {
-
-                    presenceController
-                        .handleEvent(event)
-
-                    updateStatus(event)
-                }
-            }
-
-        createUi()
-
-        connectionManager.start()
-    }
-
-    private fun createUi() {
-
-        val root =
-            LinearLayout(this)
-
-        root.orientation =
-            LinearLayout.VERTICAL
-
-        root.setPadding(
-            40,
-            40,
-            40,
-            40
-        )
-
-        val title =
-            TextView(this)
-
-        title.text =
-            "Nuvio Discord RPC"
-
-        title.textSize =
-            24f
-
-        root.addView(
-            title
-        )
-
-        statusText =
-            TextView(this)
-
-        statusText.text =
-            "Connecting..."
-
-        statusText.textSize =
-            16f
-
-        root.addView(
-            statusText
-        )
-
-        val profileCount =
-            TextView(this)
-
-        val profiles =
-            profileStore.loadProfiles()
-
-        profileCount.text =
-            "RPC profiles: ${profiles.count { it.rpcEnabled }} / ${profiles.size}"
-
-        root.addView(
-            profileCount
-        )
-
-        val reconnectButton =
-            Button(this)
-
-        reconnectButton.text =
-            "Reconnect"
-
-        reconnectButton.setOnClickListener {
-
-            connectionManager.stop()
-
-            connectionManager.start()
-
-            statusText.text =
-                "Reconnecting..."
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
         }
 
-        root.addView(
-            reconnectButton
-        )
+        val title = TextView(this).apply {
+            text = "Nuvio SIMKL Android"
+            textSize = 24f
+        }
 
-        setContentView(
-            root
-        )
-    }
+        val status = TextView(this).apply {
+            text = "Presence controller ready"
+            textSize = 16f
+        }
 
-    private fun updateStatus(
-        event: NuvioEvent
-    ) {
-
-        statusText.text =
-            when (event) {
-
-                is NuvioEvent.ProfileChanged ->
-                    "Profile: ${event.profileId}"
-
-                is NuvioEvent.PlaybackStarted ->
-                    "Watching: ${event.title}"
-
-                is NuvioEvent.PlaybackStopped ->
-                    "Browsing Nuvio"
-
-                is NuvioEvent.ActivityChanged ->
-                    if (event.active) {
-                        "Nuvio active"
-                    } else {
-                        "Home — waiting 60 seconds"
-                    }
+        val startButton = Button(this).apply {
+            text = "Start Nuvio Service"
+            setOnClickListener {
+                NuvioService.start(this@MainActivity)
+                status.text = "Nuvio service started"
             }
+        }
+
+        val stopButton = Button(this).apply {
+            text = "Stop Nuvio Service"
+            setOnClickListener {
+                NuvioService.stop(this@MainActivity)
+                status.text = "Nuvio service stopped"
+            }
+        }
+
+        root.addView(title)
+        root.addView(status)
+        root.addView(startButton)
+        root.addView(stopButton)
+
+        setContentView(root)
     }
 
     override fun onDestroy() {
-
-        connectionManager.stop()
+        if (::presence.isInitialized) {
+            presence.clear()
+        }
 
         super.onDestroy()
     }
