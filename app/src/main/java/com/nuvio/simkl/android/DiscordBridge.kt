@@ -1,47 +1,19 @@
 package com.nuvio.simkl.android
 
-class DiscordBridge {
+class DiscordBridge(
+    private val config: ConfigStore? = null
+) {
 
-    fun setWatching(
-        title: String
-    ) {
-
-        /*
-         * TODO:
-         *
-         * Call the native Discord Social SDK
-         * implementation here.
-         *
-         * Example:
-         *
-         * nativeSetPresence(
-         *     details = title,
-         *     state = "Watching",
-         *     ...
-         * )
-         */
+    fun setWatching(title: String) {
+        // TODO: connect the official Discord Social SDK here.
+        // For now this intentionally does nothing.
     }
 
     fun setBrowsing() {
-
-        /*
-         * TODO:
-         *
-         * Native Discord Social SDK call.
-         *
-         * Expected Discord activity:
-         *
-         * Browsing Nuvio
-         */
+        // TODO: connect the official Discord Social SDK here.
     }
 
     fun clear() {
-
-        /*
-         * TODO:
-         *
-         * Native Discord Social SDK:
-         * clear/update the Rich Presence.
-         */
+        // TODO: connect the official Discord Social SDK here.
     }
 }
