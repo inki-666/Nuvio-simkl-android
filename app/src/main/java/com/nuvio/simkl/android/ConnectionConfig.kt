@@ -23,7 +23,8 @@ object ConnectionConfig {
      *
      * This is only a temporary placeholder.
      */
-    const val PAIRING_TOKEN = "PASTE-PAIRING-TOKEN-HERE"
+    const val PAIRING_TOKEN =
+    "YOUR_SECRET_TOKEN"
 
     const val HEARTBEAT_INTERVAL_MS = 15_000L
 
