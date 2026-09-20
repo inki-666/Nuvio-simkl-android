@@ -15,32 +15,47 @@ class LocalHttpServer(
     private val config: ConfigStore,
     private val presence: PresenceController
 ) {
+
     @Volatile
     private var running = false
 
     private var server: ServerSocket? = null
 
-    private val pool = Executors.newCachedThreadPool()
+    private val pool =
+        Executors.newCachedThreadPool()
 
     fun start() {
-        if (running) return
+
+        if (running) {
+            return
+        }
 
         running = true
-        server = ServerSocket(port)
+
+        server =
+            ServerSocket(port)
 
         thread(
             name = "nuvio-http",
             isDaemon = true
         ) {
+
             while (running) {
+
                 try {
-                    val socket = server?.accept() ?: break
+
+                    val socket =
+                        server?.accept()
+                            ?: break
+
                     pool.execute {
                         handle(socket)
                     }
+
                 } catch (_: Exception) {
+
                     if (running) {
-                        // Keep server loop alive if possible.
+                        // Continue listening.
                     }
                 }
             }
@@ -48,6 +63,7 @@ class LocalHttpServer(
     }
 
     fun stop() {
+
         running = false
 
         runCatching {
@@ -59,33 +75,49 @@ class LocalHttpServer(
         pool.shutdownNow()
     }
 
-    private fun handle(socket: Socket) {
+    private fun handle(
+        socket: Socket
+    ) {
+
         socket.use { s ->
 
-            val reader = BufferedReader(
-                InputStreamReader(
-                    s.getInputStream(),
-                    StandardCharsets.UTF_8
+            val reader =
+                BufferedReader(
+                    InputStreamReader(
+                        s.getInputStream(),
+                        StandardCharsets.UTF_8
+                    )
                 )
-            )
 
-            val firstLine = reader.readLine() ?: return
+            val first =
+                reader.readLine()
+                    ?: return
 
             var contentLength = 0
 
             while (true) {
-                val line = reader.readLine() ?: break
+
+                val line =
+                    reader.readLine()
+                        ?: break
 
                 if (line.isEmpty()) {
                     break
                 }
 
-                val lower = line.lowercase()
+                val lower =
+                    line.lowercase()
 
-                if (lower.startsWith("content-length:")) {
+                if (
+                    lower.startsWith(
+                        "content-length:"
+                    )
+                ) {
+
                     contentLength =
-                        line
-                            .substringAfter(":")
+                        line.substringAfter(
+                            ":"
+                        )
                             .trim()
                             .toIntOrNull()
                             ?: 0
@@ -94,14 +126,22 @@ class LocalHttpServer(
 
             val body =
                 if (contentLength > 0) {
-                    CharArray(contentLength)
-                        .also { reader.read(it) }
+
+                    CharArray(
+                        contentLength
+                    )
+                        .also {
+                            reader.read(it)
+                        }
                         .concatToString()
+
                 } else {
+
                     ""
                 }
 
-            val parts = firstLine.split(" ")
+            val parts =
+                first.split(" ")
 
             val method =
                 parts.getOrNull(0)
@@ -114,82 +154,116 @@ class LocalHttpServer(
             val path =
                 rawPath.substringBefore("?")
 
-            val response = when {
+            val response =
+                when {
 
-                method == "OPTIONS" -> {
-                    json("{}", 204)
+                    method == "OPTIONS" -> {
+
+                        json(
+                            "{}",
+                            204
+                        )
+                    }
+
+                    path == "/health" -> {
+
+                        json(
+                            JSONObject()
+                                .put(
+                                    "ok",
+                                    true
+                                )
+                                .put(
+                                    "service",
+                                    "nuvio-simkl-android"
+                                )
+                                .put(
+                                    "discordConfigured",
+                                    isDiscordConfigured()
+                                )
+                                .put(
+                                    "activeSessions",
+                                    presence.activeSessionCount()
+                                )
+                                .toString()
+                        )
+                    }
+
+                    path == "/presence" &&
+                            method == "POST" -> {
+
+                        handlePresenceJson(
+                            body
+                        )
+                    }
+
+                    path == "/presence" &&
+                            method == "GET" -> {
+
+                        handlePresenceQuery(
+                            rawPath
+                        )
+                    }
+
+                    path == "/presence/state" -> {
+
+                        currentPresence()
+                    }
+
+                    path == "/presence/sessions" -> {
+
+                        allSessions()
+                    }
+
+                    path == "/presence/clear" -> {
+
+                        presence.clear()
+
+                        json(
+                            "{\"ok\":true}"
+                        )
+                    }
+
+                    path == "/manifest.json" -> {
+
+                        json(
+                            manifest()
+                        )
+                    }
+
+                    path.startsWith("/meta/") -> {
+
+                        json(
+                            """
+                            {
+                              "ok":false,
+                              "error":"Android companion does not fake metadata. Connect the verified Simkl/provider resolver before enabling meta locally."
+                            }
+                            """.trimIndent(),
+                            501
+                        )
+                    }
+
+                    else -> {
+
+                        json(
+                            """
+                            {
+                              "ok":true,
+                              "service":"Nuvio Simkl Android",
+                              "endpoints":[
+                                "POST /presence",
+                                "GET /presence",
+                                "GET /presence/state",
+                                "GET /presence/sessions",
+                                "GET /presence/clear",
+                                "GET /health"
+                              ]
+                            }
+                            """.trimIndent()
+                        )
+                    }
                 }
-
-                path == "/health" -> {
-                    json(
-                        JSONObject()
-                            .put("ok", true)
-                            .put(
-                                "service",
-                                "nuvio-simkl-android"
-                            )
-                            .put(
-                                "discordConfigured",
-                                isDiscordConfigured()
-                            )
-                            .toString()
-                    )
-                }
-
-                path == "/presence" && method == "POST" -> {
-                    handlePresenceJson(body)
-                }
-
-                path == "/presence" && method == "GET" -> {
-                    handlePresenceQuery(rawPath)
-                }
-
-                path == "/presence/state" -> {
-                    currentPresence()
-                }
-
-                path == "/presence/clear" -> {
-                    presence.clear()
-
-                    json(
-                        "{\"ok\":true}"
-                    )
-                }
-
-                path == "/manifest.json" -> {
-                    json(manifest())
-                }
-
-                path.startsWith("/meta/") -> {
-                    json(
-                        """
-                        {
-                          "ok":false,
-                          "error":"Android companion does not fake metadata. Connect the verified Simkl/provider resolver before enabling meta locally."
-                        }
-                        """.trimIndent(),
-                        501
-                    )
-                }
-
-                else -> {
-                    json(
-                        """
-                        {
-                          "ok":true,
-                          "service":"Nuvio Simkl Android",
-                          "endpoints":[
-                            "POST /presence",
-                            "GET /presence",
-                            "GET /presence/state",
-                            "GET /presence/clear",
-                            "GET /health"
-                          ]
-                        }
-                        """.trimIndent()
-                    )
-                }
-            }
 
             s.getOutputStream().use { output ->
 
@@ -210,7 +284,7 @@ class LocalHttpServer(
 
         return runCatching {
 
-            val jsonObject =
+            val o =
                 JSONObject(
                     body.ifBlank {
                         "{}"
@@ -219,87 +293,112 @@ class LocalHttpServer(
 
             val event =
                 PresenceEvent(
+
                     event =
-                        jsonObject.optString(
+                        o.optString(
                             "event",
                             "HOME"
                         ),
 
+                    sessionId =
+                        o.optNullableString(
+                            "sessionId"
+                        ),
+
+                    profileId =
+                        o.optNullableString(
+                            "profileId"
+                        ),
+
                     catalogId =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "catalogId"
                         ),
 
                     catalogName =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "catalogName"
                         ),
 
                     title =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "title"
                         ),
 
                     mediaType =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "mediaType"
                         ),
 
                     season =
-                        jsonObject.optIntOrNull(
+                        o.optIntOrNull(
                             "season"
                         ),
 
                     episode =
-                        jsonObject.optIntOrNull(
+                        o.optIntOrNull(
                             "episode"
                         ),
 
                     progress =
-                        jsonObject.optIntOrNull(
+                        o.optIntOrNull(
                             "progress"
                         ),
 
                     positionSeconds =
-                        jsonObject.optLongOrNull(
+                        o.optLongOrNull(
                             "positionSeconds"
                         ),
 
                     durationSeconds =
-                        jsonObject.optLongOrNull(
+                        o.optLongOrNull(
                             "durationSeconds"
                         ),
 
                     artwork =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "artwork"
                         ),
 
                     avatar =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "avatar"
                         ),
 
                     username =
-                        jsonObject.optNullableString(
+                        o.optNullableString(
                             "username"
                         ),
 
                     startTimestampMs =
-                        jsonObject.optLongOrNull(
+                        o.optLongOrNull(
                             "startTimestampMs"
                         )
                 )
 
             val ok =
-                presence.handle(event)
+                presence.handle(
+                    event
+                )
 
             json(
                 JSONObject()
-                    .put("ok", ok)
+                    .put(
+                        "ok",
+                        ok
+                    )
                     .put(
                         "event",
                         event.event.uppercase()
+                    )
+                    .put(
+                        "sessionId",
+                        event.sessionId
+                            ?: "default"
+                    )
+                    .put(
+                        "profileId",
+                        event.profileId
                     )
                     .toString()
             )
@@ -308,7 +407,10 @@ class LocalHttpServer(
 
             json(
                 JSONObject()
-                    .put("ok", false)
+                    .put(
+                        "ok",
+                        false
+                    )
                     .put(
                         "error",
                         error.message
@@ -333,26 +435,27 @@ class LocalHttpServer(
         val map =
             query
                 .split("&")
-                .mapNotNull { parameter ->
+                .mapNotNull {
 
-                    val pair =
-                        parameter.split(
+                    val p =
+                        it.split(
                             "=",
                             limit = 2
                         )
 
-                    if (pair.size == 2) {
+                    if (p.size == 2) {
 
                         URLDecoder.decode(
-                            pair[0],
+                            p[0],
                             "UTF-8"
                         ) to
-                            URLDecoder.decode(
-                                pair[1],
-                                "UTF-8"
-                            )
+                                URLDecoder.decode(
+                                    p[1],
+                                    "UTF-8"
+                                )
 
                     } else {
+
                         null
                     }
                 }
@@ -360,9 +463,16 @@ class LocalHttpServer(
 
         val event =
             PresenceEvent(
+
                 event =
                     map["event"]
                         ?: "HOME",
+
+                sessionId =
+                    map["sessionId"],
+
+                profileId =
+                    map["profileId"],
 
                 catalogId =
                     map["catalogId"],
@@ -409,10 +519,26 @@ class LocalHttpServer(
             )
 
         val ok =
-            presence.handle(event)
+            presence.handle(
+                event
+            )
 
         return json(
-            "{\"ok\":$ok}"
+            JSONObject()
+                .put(
+                    "ok",
+                    ok
+                )
+                .put(
+                    "sessionId",
+                    event.sessionId
+                        ?: "default"
+                )
+                .put(
+                    "profileId",
+                    event.profileId
+                )
+                .toString()
         )
     }
 
@@ -422,6 +548,7 @@ class LocalHttpServer(
             presence.current()
 
         if (event == null) {
+
             return json(
                 "{\"active\":false}"
             )
@@ -435,6 +562,14 @@ class LocalHttpServer(
             .put(
                 "event",
                 event.event
+            )
+            .put(
+                "sessionId",
+                event.sessionId
+            )
+            .put(
+                "profileId",
+                event.profileId
             )
             .apply {
 
@@ -535,13 +670,78 @@ class LocalHttpServer(
             }
     }
 
+    private fun allSessions(): String {
+
+        val sessions =
+            presence.sessions()
+
+        val array =
+            org.json.JSONArray()
+
+        sessions.forEach { session ->
+
+            array.put(
+                JSONObject()
+                    .put(
+                        "sessionId",
+                        session.sessionId
+                    )
+                    .put(
+                        "profileId",
+                        session.profileId
+                    )
+                    .put(
+                        "active",
+                        session.active
+                    )
+                    .put(
+                        "away",
+                        session.away
+                    )
+                    .put(
+                        "playing",
+                        session.playing
+                    )
+                    .put(
+                        "event",
+                        session.event
+                    )
+                    .put(
+                        "title",
+                        session.title
+                    )
+                    .put(
+                        "priorityOrder",
+                        session.priorityOrder
+                    )
+            )
+        }
+
+        return json(
+            JSONObject()
+                .put(
+                    "activeSessions",
+                    presence.activeSessionCount()
+                )
+                .put(
+                    "prioritySession",
+                    presence.prioritySession()?.sessionId
+                )
+                .put(
+                    "sessions",
+                    array
+                )
+                .toString()
+        )
+    }
+
     private fun isDiscordConfigured(): Boolean {
 
-        val configValue =
+        val c =
             config.load()
 
-        return configValue.discordEnabled &&
-                configValue.discordApplicationId != 0L
+        return c.discordEnabled &&
+                c.discordApplicationId != 0L
     }
 
     private fun manifest(): String {
@@ -551,7 +751,7 @@ class LocalHttpServer(
           "id":"com.nuvio.simkl.android",
           "version":"1.1.0",
           "name":"Nuvio Simkl Android",
-          "description":"Local Nuvio presence bridge; metadata is not fabricated locally.",
+          "description":"Local Nuvio presence bridge with multi-session Discord priority.",
           "resources":["meta"],
           "types":["movie","series","anime"],
           "idPrefixes":[
@@ -620,7 +820,9 @@ class LocalHttpServer(
                 "Content-Length: "
             )
 
-            append(bytes.size)
+            append(
+                bytes.size
+            )
 
             append("\r\n")
 
@@ -665,7 +867,10 @@ private fun JSONObject.optIntOrNull(
     name: String
 ): Int? {
 
-    if (!has(name) || isNull(name)) {
+    if (
+        !has(name) ||
+        isNull(name)
+    ) {
         return null
     }
 
@@ -682,7 +887,10 @@ private fun JSONObject.optLongOrNull(
     name: String
 ): Long? {
 
-    if (!has(name) || isNull(name)) {
+    if (
+        !has(name) ||
+        isNull(name)
+    ) {
         return null
     }
 
