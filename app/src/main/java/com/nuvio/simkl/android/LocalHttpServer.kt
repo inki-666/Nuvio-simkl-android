@@ -115,9 +115,7 @@ class LocalHttpServer(
                 ) {
 
                     contentLength =
-                        line.substringAfter(
-                            ":"
-                        )
+                        line.substringAfter(":")
                             .trim()
                             .toIntOrNull()
                             ?: 0
@@ -183,7 +181,8 @@ class LocalHttpServer(
                                 )
                                 .put(
                                     "activeSessions",
-                                    presence.activeSessionCount()
+                                    presence.getSessions()
+                                        .count { it.active }
                                 )
                                 .toString()
                         )
@@ -376,16 +375,15 @@ class LocalHttpServer(
                         )
                 )
 
-            val ok =
-                presence.handle(
-                    event
-                )
+            presence.handle(
+                event
+            )
 
             json(
                 JSONObject()
                     .put(
                         "ok",
-                        ok
+                        true
                     )
                     .put(
                         "event",
@@ -449,10 +447,10 @@ class LocalHttpServer(
                             p[0],
                             "UTF-8"
                         ) to
-                                URLDecoder.decode(
-                                    p[1],
-                                    "UTF-8"
-                                )
+                            URLDecoder.decode(
+                                p[1],
+                                "UTF-8"
+                            )
 
                     } else {
 
@@ -518,16 +516,19 @@ class LocalHttpServer(
                     map["username"]
             )
 
-        val ok =
-            presence.handle(
-                event
-            )
+        presence.handle(
+            event
+        )
 
         return json(
             JSONObject()
                 .put(
                     "ok",
-                    ok
+                    true
+                )
+                .put(
+                    "event",
+                    event.event.uppercase()
                 )
                 .put(
                     "sessionId",
@@ -544,10 +545,10 @@ class LocalHttpServer(
 
     private fun currentPresence(): String {
 
-        val event =
-            presence.current()
+        val session =
+            presence.getPrioritySession()
 
-        if (event == null) {
+        if (session == null) {
 
             return json(
                 "{\"active\":false}"
@@ -557,112 +558,129 @@ class LocalHttpServer(
         return JSONObject()
             .put(
                 "active",
-                true
+                session.active
+            )
+            .put(
+                "away",
+                session.away
+            )
+            .put(
+                "playing",
+                session.playing
+            )
+            .put(
+                "paused",
+                session.paused
             )
             .put(
                 "event",
-                event.event
+                session.event
             )
             .put(
                 "sessionId",
-                event.sessionId
+                session.sessionId
             )
             .put(
                 "profileId",
-                event.profileId
+                session.profileId
             )
             .apply {
 
-                event.catalogId?.let {
+                session.catalogId?.let {
                     put(
                         "catalogId",
                         it
                     )
                 }
 
-                event.catalogName?.let {
+                session.catalogName?.let {
                     put(
                         "catalogName",
                         it
                     )
                 }
 
-                event.title?.let {
+                session.title?.let {
                     put(
                         "title",
                         it
                     )
                 }
 
-                event.mediaType?.let {
+                session.mediaType?.let {
                     put(
                         "mediaType",
                         it
                     )
                 }
 
-                event.season?.let {
+                session.season?.let {
                     put(
                         "season",
                         it
                     )
                 }
 
-                event.episode?.let {
+                session.episode?.let {
                     put(
                         "episode",
                         it
                     )
                 }
 
-                event.progress?.let {
+                session.progress?.let {
                     put(
                         "progress",
                         it
                     )
                 }
 
-                event.positionSeconds?.let {
+                session.positionSeconds?.let {
                     put(
                         "positionSeconds",
                         it
                     )
                 }
 
-                event.durationSeconds?.let {
+                session.durationSeconds?.let {
                     put(
                         "durationSeconds",
                         it
                     )
                 }
 
-                event.artwork?.let {
+                session.artwork?.let {
                     put(
                         "artwork",
                         it
                     )
                 }
 
-                event.avatar?.let {
+                session.avatar?.let {
                     put(
                         "avatar",
                         it
                     )
                 }
 
-                event.username?.let {
+                session.username?.let {
                     put(
                         "username",
                         it
                     )
                 }
 
-                event.startTimestampMs?.let {
+                session.startTimestampMs?.let {
                     put(
                         "startTimestampMs",
                         it
                     )
                 }
+
+                put(
+                    "priorityOrder",
+                    session.priorityOrder
+                )
             }
             .toString()
             .let {
@@ -673,7 +691,7 @@ class LocalHttpServer(
     private fun allSessions(): String {
 
         val sessions =
-            presence.sessions()
+            presence.getSessions()
 
         val array =
             org.json.JSONArray()
@@ -703,12 +721,64 @@ class LocalHttpServer(
                         session.playing
                     )
                     .put(
+                        "paused",
+                        session.paused
+                    )
+                    .put(
                         "event",
                         session.event
                     )
                     .put(
                         "title",
                         session.title
+                    )
+                    .put(
+                        "catalogId",
+                        session.catalogId
+                    )
+                    .put(
+                        "catalogName",
+                        session.catalogName
+                    )
+                    .put(
+                        "mediaType",
+                        session.mediaType
+                    )
+                    .put(
+                        "season",
+                        session.season
+                    )
+                    .put(
+                        "episode",
+                        session.episode
+                    )
+                    .put(
+                        "progress",
+                        session.progress
+                    )
+                    .put(
+                        "positionSeconds",
+                        session.positionSeconds
+                    )
+                    .put(
+                        "durationSeconds",
+                        session.durationSeconds
+                    )
+                    .put(
+                        "artwork",
+                        session.artwork
+                    )
+                    .put(
+                        "avatar",
+                        session.avatar
+                    )
+                    .put(
+                        "username",
+                        session.username
+                    )
+                    .put(
+                        "startTimestampMs",
+                        session.startTimestampMs
                     )
                     .put(
                         "priorityOrder",
@@ -721,11 +791,11 @@ class LocalHttpServer(
             JSONObject()
                 .put(
                     "activeSessions",
-                    presence.activeSessionCount()
+                    sessions.count { it.active }
                 )
                 .put(
                     "prioritySession",
-                    presence.prioritySession()?.sessionId
+                    presence.getPrioritySession()?.sessionId
                 )
                 .put(
                     "sessions",
