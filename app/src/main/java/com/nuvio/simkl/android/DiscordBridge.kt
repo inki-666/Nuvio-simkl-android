@@ -5,15 +5,42 @@ class DiscordBridge(
 ) {
 
     fun setWatching(title: String) {
-        // TODO: connect the official Discord Social SDK here.
-        // For now this intentionally does nothing.
+        // TODO:
+        // Connect the official Discord Social SDK here.
+        //
+        // Expected Discord state:
+        // Watching <title>
+    }
+
+    fun setPaused(title: String) {
+        // TODO:
+        // Connect the official Discord Social SDK here.
+        //
+        // Expected Discord state:
+        // Paused <title>
     }
 
     fun setBrowsing() {
-        // TODO: connect the official Discord Social SDK here.
+        // TODO:
+        // Connect the official Discord Social SDK here.
+        //
+        // Expected Discord state:
+        // Browsing Nuvio
+    }
+
+    fun setBrowsingMetadata(title: String) {
+        // TODO:
+        // Connect the official Discord Social SDK here.
+        //
+        // Expected Discord state:
+        // Browsing <title>
     }
 
     fun clear() {
-        // TODO: connect the official Discord Social SDK here.
+        // TODO:
+        // Connect the official Discord Social SDK here.
+        //
+        // Expected behavior:
+        // Completely clear the Discord Rich Presence.
     }
 }
