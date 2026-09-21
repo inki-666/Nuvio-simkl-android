@@ -2,6 +2,7 @@ package com.nuvio.tv.rpc
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -12,7 +13,7 @@ class NuvioRpcBridge(
 ) {
 
     fun start(
-        activeProfileIdFlow: kotlinx.coroutines.flow.Flow<String?>
+        activeProfileIdFlow: Flow<String?>
     ) {
 
         scope.launch(Dispatchers.Main) {
@@ -21,23 +22,11 @@ class NuvioRpcBridge(
                 .distinctUntilChanged()
                 .collect { profileId ->
 
-                    if (
-                        profileId.isNullOrBlank()
-                    ) {
+                    if (profileId.isNullOrBlank()) {
                         return@collect
                     }
 
-                    send(
-                        JSONObject()
-                            .put(
-                                "type",
-                                "profile_changed"
-                            )
-                            .put(
-                                "profileId",
-                                profileId
-                            )
-                    )
+                    profileChanged(profileId)
                 }
         }
     }
@@ -50,7 +39,7 @@ class NuvioRpcBridge(
             JSONObject()
                 .put(
                     "type",
-                    "profile_changed"
+                    "PROFILE_CHANGED"
                 )
                 .put(
                     "profileId",
@@ -68,7 +57,7 @@ class NuvioRpcBridge(
             JSONObject()
                 .put(
                     "type",
-                    "playback_started"
+                    "PLAYING"
                 )
                 .put(
                     "profileId",
@@ -81,6 +70,49 @@ class NuvioRpcBridge(
         )
     }
 
+    fun playbackPaused(
+        profileId: String,
+        title: String? = null,
+        positionSeconds: Long? = null,
+        durationSeconds: Long? = null
+    ) {
+
+        send(
+            JSONObject()
+                .put(
+                    "type",
+                    "PAUSED"
+                )
+                .put(
+                    "profileId",
+                    profileId
+                )
+                .apply {
+
+                    title?.let {
+                        put(
+                            "title",
+                            it
+                        )
+                    }
+
+                    positionSeconds?.let {
+                        put(
+                            "positionSeconds",
+                            it
+                        )
+                    }
+
+                    durationSeconds?.let {
+                        put(
+                            "durationSeconds",
+                            it
+                        )
+                    }
+                }
+        )
+    }
+
     fun playbackStopped(
         profileId: String
     ) {
@@ -89,12 +121,158 @@ class NuvioRpcBridge(
             JSONObject()
                 .put(
                     "type",
-                    "playback_stopped"
+                    "STOPPED"
                 )
                 .put(
                     "profileId",
                     profileId
                 )
+        )
+    }
+
+    fun browsing(
+        profileId: String,
+        title: String? = null
+    ) {
+
+        send(
+            JSONObject()
+                .put(
+                    "type",
+                    "BROWSING"
+                )
+                .put(
+                    "profileId",
+                    profileId
+                )
+                .apply {
+
+                    title?.let {
+                        put(
+                            "title",
+                            it
+                        )
+                    }
+                }
+        )
+    }
+
+    fun browsingMetadata(
+        profileId: String,
+        title: String,
+        catalogId: String? = null,
+        catalogName: String? = null,
+        mediaType: String? = null,
+        season: Int? = null,
+        episode: Int? = null,
+        artwork: String? = null
+    ) {
+
+        send(
+            JSONObject()
+                .put(
+                    "type",
+                    "BROWSING_METADATA"
+                )
+                .put(
+                    "profileId",
+                    profileId
+                )
+                .put(
+                    "title",
+                    title
+                )
+                .apply {
+
+                    catalogId?.let {
+                        put(
+                            "catalogId",
+                            it
+                        )
+                    }
+
+                    catalogName?.let {
+                        put(
+                            "catalogName",
+                            it
+                        )
+                    }
+
+                    mediaType?.let {
+                        put(
+                            "mediaType",
+                            it
+                        )
+                    }
+
+                    season?.let {
+                        put(
+                            "season",
+                            it
+                        )
+                    }
+
+                    episode?.let {
+                        put(
+                            "episode",
+                            it
+                        )
+                    }
+
+                    artwork?.let {
+                        put(
+                            "artwork",
+                            it
+                        )
+                    }
+                }
+        )
+    }
+
+    fun home(
+        profileId: String
+    ) {
+
+        send(
+            JSONObject()
+                .put(
+                    "type",
+                    "HOME"
+                )
+                .put(
+                    "profileId",
+                    profileId
+                )
+        )
+    }
+
+    fun sessionEnded(
+        profileId: String? = null,
+        sessionId: String? = null
+    ) {
+
+        send(
+            JSONObject()
+                .put(
+                    "type",
+                    "SESSION_ENDED"
+                )
+                .apply {
+
+                    profileId?.let {
+                        put(
+                            "profileId",
+                            it
+                        )
+                    }
+
+                    sessionId?.let {
+                        put(
+                            "sessionId",
+                            it
+                        )
+                    }
+                }
         )
     }
 
@@ -106,7 +284,11 @@ class NuvioRpcBridge(
             JSONObject()
                 .put(
                     "type",
-                    "nuvio_activity"
+                    if (active) {
+                        "BROWSING"
+                    } else {
+                        "SESSION_ENDED"
+                    }
                 )
                 .put(
                     "active",
